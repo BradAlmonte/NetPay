@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NetPay — Tax Calculator</title>
+  <meta name="description" content="Enter a gross amount, choose a tax %, get the net pay (penny-accurate)." />
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 (UMD) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <style>
+    html, body { background: #0a0a0a; color: #e5e5e5; }
+    .bg-neutral-850 { background-color: #1c1c1c; }
+    .bg-neutral-750 { background-color: #2a2a2a; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    const { useMemo, useState, useEffect, useRef } = React;
+
+    const currencyFmt = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    });
+
+    function parseCurrencyToCents(input) {
+      if (typeof input !== "string") return 0;
+      const cleaned = input.replace(/[^0-9.]/g, "");
+      if (!cleaned) return 0;
+      const parts = cleaned.split(".");
+      let dollars = parts[0] || "0";
+      let cents = (parts[1] || "").slice(0, 2);
+      if (cents.length === 1) cents = cents + "0";
+      if (cents.length === 0) cents = "00";
+      const asInt = parseInt(dollars, 10) * 100 + parseInt(cents, 10);
+      return isNaN(asInt) ? 0 : asInt;
+    }
+
+    function formatCents(cents) {
+      return currencyFmt.format((cents || 0) / 100);
+    }
+
+    const PRESETS = [0, 3, 5, 5.5, 6, 6.25, 6.35, 7, 7.5, 8, 8.25, 9, 10];
+
+    function ResultCard({ label, value, sub, highlight = false }) {
+      return (
+        React.createElement("div", {
+          className: `rounded-2xl p-4 ring-1 ring-neutral-800 bg-neutral-850 ${highlight ? "shadow-2xl ring-emerald-700/30" : ""}`,
+          role: "group",
+          "aria-label": `${label} result`
+        },
+          React.createElement("div", { className: "text-sm text-neutral-400" }, label),
+          React.createElement("div", { className: "mt-1 text-2xl font-semibold tracking-tight" }, value),
+          sub ? React.createElement("div", { className: "mt-0.5 text-xs text-neutral-500" }, sub) : null
+        )
+      );
+    }
+
+    function NetPayApp() {
+      const [rawAmount, setRawAmount] = useState("");
+      const [amountCents, setAmountCents] = useState(0);
+      const [rate, setRate] = useState(6);
+      const [useCustom, setUseCustom] = useState(false);
+      const customRef = useRef(null);
+
+      useEffect(() => {
+        if (useCustom && customRef.current) {
+          customRef.current.focus();
+          if (customRef.current.select) customRef.current.select();
+        }
+      }, [useCustom]);
+
+      const taxCents = useMemo(() => Math.round(amountCents * (Number(rate) / 100)), [amountCents, rate]);
+      const netCents = useMemo(() => Math.max(0, amountCents - taxCents), [amountCents, taxCents]);
+
+      const grossStr = useMemo(() => formatCents(amountCents), [amountCents]);
+      const taxStr = useMemo(() => formatCents(taxCents), [taxCents]);
+      const netStr = useMemo(() => formatCents(netCents), [netCents]);
+
+      function handleAmountChange(e) {
+        const v = e.target.value;
+        setRawAmount(v);
+        setAmountCents(parseCurrencyToCents(v));
+      }
+      function handleAmountBlur() { setRawAmount(grossStr); }
+
+      function handlePresetChange(e) {
+        const val = e.target.value;
+        if (val === "custom") setUseCustom(true); else { setUseCustom(false); setRate(Number(val)); }
+      }
+      function handleCustomRate(e) {
+        const v = e.target.value.replace(/[^0-9.]/g, "");
+        const [a, b = ""] = v.split(".");
+        const trimmed = b ? `${a}.${b.slice(0, 2)}` : a;
+        setRate(trimmed === "" ? 0 : Number(trimmed));
+      }
+      function resetAll() { setRawAmount(""); setAmountCents(0); setRate(6); setUseCustom(false); }
+
+      return (
+        React.createElement("div", { className: "min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4" },
+          React.createElement("div", { className: "w-full max-w-2xl" },
+            React.createElement("header", { className: "mb-6 text-center" },
+              React.createElement("h1", { className: "text-4xl md:text-5xl font-extrabold tracking-tight" },
+                "Net", React.createElement("span", { className: "text-emerald-400" }, "Pay")
+              ),
+              React.createElement("p", { className: "mt-2 text-neutral-300" }, "Enter gross amount, choose a tax %, get your net. Penny-accurate.")
+            ),
+            React.createElement("div", { className: "bg-neutral-900 rounded-2xl shadow-xl ring-1 ring-neutral-800 p-5 md:p-6" },
+              React.createElement("label", { htmlFor: "amount", className: "block text-sm font-medium mb-2 text-neutral-300" }, "Gross Amount"),
+              React.createElement("div", { className: "flex gap-2" },
+                React.createElement("div", { className: "relative flex-1" },
+                  React.createElement("span", { className: "absolute left-3 top-2.5 select-none" }, "$"),
+                  React.createElement("input", {
+                    id: "amount",
+                    inputMode: "decimal",
+                    "aria-label": "Gross amount in dollars",
+                    placeholder: "0.00",
+                    className: "w-full pl-7 pr-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-lg",
+                    value: rawAmount,
+                    onChange: handleAmountChange,
+                    onBlur: handleAmountBlur
+                  })
+                ),
+                React.createElement("button", {
+                  type: "button",
+                  onClick: resetAll,
+                  className: "px-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700 hover:bg-neutral-750 active:scale-[.98]",
+                  "aria-label": "Reset",
+                  title: "Reset"
+                }, "Reset")
+              ),
+
+              React.createElement("div", { className: "mt-6 grid grid-cols-1 md:grid-cols-2 gap-4" },
+                React.createElement("div", null,
+                  React.createElement("label", { className: "block text-sm font-medium mb-2 text-neutral-300" }, "Tax Rate (Preset)"),
+                  React.createElement("select", {
+                    className: "w-full rounded-xl bg-neutral-800 border border-neutral-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500",
+                    value: (useCustom ? "custom" : String(rate)),
+                    onChange: handlePresetChange,
+                    "aria-label": "Select a preset tax percentage"
+                  },
+                    PRESETS.map(r => React.createElement("option", { key: r, value: r }, `${r}%`)),
+                    React.createElement("option", { value: "custom" }, "Custom…")
+                  )
+                ),
+                React.createElement("div", null,
+                  React.createElement("label", { className: "block text-sm font-medium mb-2 text-neutral-300" }, useCustom ? "Custom Tax %" : "Current Tax %"),
+                  React.createElement("div", { className: "flex items-center gap-2" },
+                    React.createElement("input", {
+                      ref: customRef,
+                      type: "text",
+                      inputMode: "decimal",
+                      "aria-label": "Custom tax percent",
+                      disabled: !useCustom,
+                      value: String(rate),
+                      onChange: handleCustomRate,
+                      className: `flex-1 rounded-xl px-3 py-2 bg-neutral-800 border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${useCustom ? "opacity-100" : "opacity-60"}`
+                    }),
+                    React.createElement("span", { className: "select-none" }, "%")
+                  ),
+                  React.createElement("p", { className: "mt-1 text-xs text-neutral-400" }, "Supports up to two decimals (e.g., 6.35).")
+                )
+              ),
+
+              React.createElement("section", { className: "mt-6 grid grid-cols-1 md:grid-cols-3 gap-4" },
+                React.createElement(ResultCard, { label: "Gross", value: grossStr, sub: (amountCents ? `${rate}% selected` : "—") }),
+                React.createElement(ResultCard, { label: "Tax", value: taxStr, sub: (amountCents ? `${rate}% of gross` : "—") }),
+                React.createElement(ResultCard, { label: "Net Pay", value: netStr, highlight: true })
+              ),
+
+              React.createElement("details", { className: "mt-4 group" },
+                React.createElement("summary", { className: "cursor-pointer select-none text-sm text-neutral-300" }, "Show calculation details"),
+                React.createElement("div", { className: "mt-2 text-sm text-neutral-300/90 space-y-1" },
+                  React.createElement("p", null,
+                    "We convert your amount to integer cents, compute ",
+                    React.createElement("code", null, "tax = round(gross_cents × (rate/100))"),
+                    ", and then ",
+                    React.createElement("code", null, "net = gross_cents − tax"),
+                    ". All displays are formatted using your locale."
+                  )
+                )
+              ),
+
+              React.createElement("footer", { className: "mt-6 text-center text-xs text-neutral-500" },
+                "Build for precise money math.  ",
+                React.createElement("span", { className: "text-neutral-300 font-medium" }, "NetPay")
+              )
+            )
+          )
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(React.createElement(NetPayApp));
+  </script>
+</body>
+</html>
